@@ -1,126 +1,94 @@
-"""
-Maya 2024+  |  Turntable – 3-Point Arnold Area Light Setup
-===========================================================
-Select one polygon mesh object, open the Turntable UI, and click
-'Create Setup'.  Re-running the setup automatically removes the
-previous rig first.
+# Turntable
+# By Colin Cheng 
+# 
+# 
+# Run script, select object, adjust attributes in window
+# Creates a 3 Point lighting setup with Arnold lights around the object based on vertex attributes.
 
-Spherical coordinate convention for light placement:
-  azimuth  0° = +Z (front)  90° = +X (right)  180° = -Z (back)
-  elevation 0° = horizon    90° = straight up
-
-Arnold area lights emit along local -Z.  If lights face the wrong
-way, change aimVector=(0,0,-1) to (0,-1,0) inside aim_at().
-"""
-
-import maya.cmds as cmds
+import maya.cmds as mc
 import math
 
-# ── Scene-node names used by this rig ─────────────────────────────────────────
+# Class for scene node names 
 class variables():
-    LIGHT_NAMES  = ('keyLight', 'fillLight', 'rimLight')
-    LIGHTS_GRP   = 'threePtLights_grp'
-    CAM_PIVOT    = 'cam1_pivot'
+    light_names  = ('keyLight', 'fillLight', 'rimLight')
+    lights_grp   = 'threePtlights_grp'
+    cam_pivot    = 'cam1_pivot'
+    turntable = 'turntable_grp'
 
 # Relative intensity multipliers so the 3-point ratios are preserved
 # regardless of what the user types in the Intensity field.
-    INTENSITY_RATIO = {'keyLight': 1.0, 'fillLight': 0.35, 'rimLight': 0.65}
+    intensity_ratio = {'keyLight': 1.0, 'fillLight': 0.35, 'rimLight': 0.65}
 
 # Spherical placement per light: (azimuth_deg, elevation_deg, dist_multiplier)
-    LIGHT_PLACEMENT = {
+    light_placement = {
         'keyLight':  ( 45,  45, 1.0),
         'fillLight': (-45,  20, 1.3),
         'rimLight':  (180,  55, 1.0),
     }
 
 
-# ── Cleanup ───────────────────────────────────────────────────────────────────
+# Deletes previous setup 
 
 def cleanup_previous_setup():
-    """Delete any nodes from a previous run of this script."""
     to_delete = []
 
-    if cmds.objExists(LIGHTS_GRP):
-        to_delete.append(LIGHTS_GRP)
+    if mc.objExists(variables.turntable):
+        to_delete.append(variables.turntable)
     else:
-        for n in LIGHT_NAMES:
-            if cmds.objExists(n):
+        for n in variables.light_names:
+            if mc.objExists(n):
                 to_delete.append(n)
-
-    if cmds.objExists(CAM_PIVOT):
-        to_delete.append(CAM_PIVOT)
 
     if to_delete:
         cmds.delete(to_delete)
         print("Turntable: removed previous setup ({}).".format(', '.join(to_delete)))
 
 
-# ── Core setup ────────────────────────────────────────────────────────────────
+# Core setup
 
 def create_setup(settings):
-    """
-    Build the 3-point lighting rig and camera from a settings dict.
 
-    Expected keys
-    -------------
-    color           (r, g, b) floats 0-1
-    intensity       float  – key-light base; fill/rim are scaled automatically
-    exposure        float  – applied equally to all three lights
-    use_color_temp  bool
-    temperature     int    – Kelvin, used when use_color_temp is True
-    spread          float  0-1
-    cam_name        str
-    start_frame     int
-    end_frame       int
-    rotation_axis   'X', 'Y', or 'Z'
-    """
-
-    # ── Validate selection ────────────────────────────────────────────────
-    sel = cmds.ls(selection=True)
+    # Validate selection 
+    sel = mc.ls(selection=True)
     if not sel:
-        cmds.error("Turntable: nothing selected – select a mesh object first.")
+        mc.error("Turntable: nothing selected – select a mesh object first.")
         return
 
     obj = sel[0]
-    if cmds.objectType(obj) in ('mesh', 'nurbsSurface', 'nurbsCurve'):
-        obj = cmds.listRelatives(obj, parent=True)[0]
+    if mc.objectType(obj) in ('mesh', 'nurbsSurface', 'nurbsCurve'):
+        obj = mc.listRelatives(obj, parent=True)[0]
 
-    shapes = cmds.listRelatives(obj, shapes=True, type='mesh')
+    shapes = mc.listRelatives(obj, shapes=True, type='mesh')
     if not shapes:
-        cmds.error("Turntable: '{}' has no polygon mesh shape.".format(obj))
+        mc.error("Turntable: '{}' has no polygon mesh shape.".format(obj))
         return
 
     mesh = shapes[0]
 
-    # ── Remove previous rig ───────────────────────────────────────────────
+    # Remove previous rig 
     cleanup_previous_setup()
 
-    # ── Find centroid via temporary cluster ───────────────────────────────
-    #
-    #   a) select all vertices
-    #   b) cluster() places its handle at the weighted centroid of the verts
-    #   c) read world-space translation of the handle
-    #   d) delete handle + deformer node
-    #
-    cmds.select('{}.vtx[*]'.format(mesh))
-    cluster_node, cluster_handle = cmds.cluster(name='_tempCenter_cluster')
-    center = cmds.xform(cluster_handle, query=True, worldSpace=True, translation=True)
-    cmds.delete(cluster_handle)
-    if cmds.objExists(cluster_node):
-        cmds.delete(cluster_node)
-    cmds.select(clear=True)
+    # Find center of object via. temporary cluster
+
+    mc.select('{}.vtx[*]'.format(mesh))
+    cluster_node, cluster_handle = mc.cluster(name='_tempCenter_cluster')
+    center = mc.xform(cluster_handle, query=True, worldSpace=True, translation=True)
+    mc.delete(cluster_handle)
+    if mc.objExists(cluster_node):
+        mc.delete(cluster_node)
+    mc.select(clear=True)
 
     cx, cy, cz = center
 
     # ── Scale distances from bounding box ────────────────────────────────
-    bb       = cmds.exactWorldBoundingBox(obj)
+    bb       = mc.exactWorldBoundingBox(obj)
     obj_size = max(bb[3]-bb[0], bb[4]-bb[1], bb[5]-bb[2]) or 1.0
 
     light_dist = obj_size * 2.5
     cam_dist   = obj_size * 3.5
     light_size = obj_size * 0.8
 
-    # ── Helpers ───────────────────────────────────────────────────────────
+    # Cluster setup to find true center of object 
 
     def sphere_to_world(az_deg, el_deg, radius):
         az = math.radians(az_deg)
@@ -133,100 +101,91 @@ def create_setup(settings):
 
     def aim_at(xform, target):
         """Point xform's local -Z axis at target (world space), no constraints left."""
-        loc = cmds.spaceLocator(name='_tempAimLoc')[0]
-        cmds.xform(loc, worldSpace=True, translation=list(target))
-        con = cmds.aimConstraint(
+        loc = mc.spaceLocator(name='_tempAimLoc')[0]
+        mc.xform(loc, worldSpace=True, translation=list(target))
+        con = mc.aimConstraint(
             loc, xform,
             aimVector=(0, 0, -1),
             upVector=(0, 1, 0),
             worldUpType='scene',
             maintainOffset=False,
         )[0]
-        rot = cmds.xform(xform, query=True, worldSpace=True, rotation=True)
-        cmds.delete(con, loc)
-        cmds.xform(xform, worldSpace=True, rotation=rot)
+        rot = mc.xform(xform, query=True, worldSpace=True, rotation=True)
+        mc.delete(con, loc)
+        mc.xform(xform, worldSpace=True, rotation=rot)
 
     def make_area_light(name, world_pos, intensity_val):
-        xform = cmds.createNode('transform', name=name)
-        shape = cmds.createNode('aiAreaLight', parent=xform, name=name + '_shape')
+        xform = mc.createNode('transform', name=name)
+        shape = mc.createNode('aiAreaLight', parent=xform, name=name + '_shape')
 
-        cmds.xform(xform, worldSpace=True, translation=list(world_pos))
+        mc.xform(xform, worldSpace=True, translation=list(world_pos))
         for axis in ('X', 'Y', 'Z'):
-            cmds.setAttr('{}.scale{}'.format(xform, axis), light_size)
+            mc.setAttr('{}.scale{}'.format(xform, axis), light_size)
 
         r, g, b = settings['color']
-        cmds.setAttr('{}.color'.format(shape),     r, g, b, type='double3')
-        cmds.setAttr('{}.intensity'.format(shape), intensity_val)
-        cmds.setAttr('{}.exposure'.format(shape),  settings['exposure'])
-        cmds.setAttr('{}.normalize'.format(shape), 1)
-        cmds.setAttr('{}.aiSpread'.format(shape),    settings['spread'])
+        mc.setAttr('{}.color'.format(shape),     r, g, b, type='double3')
+        mc.setAttr('{}.intensity'.format(shape), intensity_val)
+        mc.setAttr('{}.exposure'.format(shape),  settings['exposure'])
+        mc.setAttr('{}.normalize'.format(shape), 1)
+        mc.setAttr('{}.aiSpread'.format(shape),    settings['spread'])
 
         use_temp = settings['use_color_temp']
-        cmds.setAttr('{}.aiUseColorTemperature'.format(shape), use_temp)
+        mc.setAttr('{}.aiUseColorTemperature'.format(shape), use_temp)
         if use_temp:
-            cmds.setAttr('{}.aiColorTemperature'.format(shape), settings['temperature'])
+            mc.setAttr('{}.aiColorTemperature'.format(shape), settings['temperature'])
 
         aim_at(xform, center)
         return xform
 
-    # ── Create three lights ───────────────────────────────────────────────
+    # Create three lights 
     base_intensity = settings['intensity']
     lights = []
-    for lname in LIGHT_NAMES:
-        az, el, dist_mult = LIGHT_PLACEMENT[lname]
+    for lname in variables.light_names:
+        az, el, dist_mult = variables.light_placement[lname]
         pos   = sphere_to_world(az, el, light_dist * dist_mult)
-        light = make_area_light(lname, pos, base_intensity * INTENSITY_RATIO[lname])
+        light = make_area_light(lname, pos, base_intensity * variables.intensity_ratio[lname])
         lights.append(light)
 
-    cmds.group(*lights, name=LIGHTS_GRP)
+    mc.group(*lights, name=variables.lights_grp)
 
-    # ── Create camera parented to a pivot at the centroid ─────────────────
-    #
-    #   cam1_pivot  (world position = object centroid)
-    #   └── <cam>  (local Z = +cam_dist → camera's default -Z looks at pivot)
-    #
-    pivot = cmds.group(empty=True, name=CAM_PIVOT)
-    cmds.xform(pivot, worldSpace=True, translation=center)
+    # Create camera parented to a pivot at the centroid
+
+    pivot = mc.group(empty=True, name=variables.cam_pivot)
+    mc.xform(pivot, worldSpace=True, translation=center)
 
     cam_name = settings['cam_name'] or 'cam1'
-    cam_xform, _cam_shape = cmds.camera(name=cam_name)
-    cmds.parent(cam_xform, pivot)
+    cam_xform, _cam_shape = mc.camera(name=cam_name)
+    mc.parent(cam_xform, pivot)
 
     for attr, val in [('translateX', 0), ('translateY', 0), ('translateZ', cam_dist),
                       ('rotateX',    0), ('rotateY',    0), ('rotateZ',    0)]:
-        cmds.setAttr('{}.{}'.format(cam_xform, attr), val)
+        mc.setAttr('{}.{}'.format(cam_xform, attr), val)
 
-    # ── Keyframe pivot rotation for turntable animation ───────────────────
+    #  Keyframe pivot rotation for turntable animation 
     axis = settings['rotation_axis']
     sf   = settings['start_frame']
     ef   = settings['end_frame']
 
-    cmds.setKeyframe(pivot, attribute='rotate{}'.format(axis), time=sf, value=0)
-    cmds.setKeyframe(pivot, attribute='rotate{}'.format(axis), time=ef, value=360)
+    mc.setKeyframe(pivot, attribute='rotate{}'.format(axis), time=sf, value=0)
+    mc.setKeyframe(pivot, attribute='rotate{}'.format(axis), time=ef, value=360)
 
-    cmds.selectKey(pivot, attribute='rotate{}'.format(axis), time=(sf, ef))
-    cmds.keyTangent(inTangentType='linear', outTangentType='linear')
+    mc.selectKey(pivot, attribute='rotate{}'.format(axis), time=(sf, ef))
+    mc.keyTangent(inTangentType='linear', outTangentType='linear')
 
-    cmds.playbackOptions(minTime=sf, maxTime=ef)
-    cmds.select(clear=True)
+    mc.playbackOptions(minTime=sf, maxTime=ef)
+    mc.select(clear=True)
+        
+    #  Group camera and lights 
+    mc.group('threePtlights_grp', 'cam1_pivot', name=variables.turntable)
 
-    print("=" * 54)
-    print("  Turntable setup complete")
-    print("  Object : {}".format(obj))
-    print("  Centre : ({:.3f}, {:.3f}, {:.3f})".format(*center))
-    print("  Camera : {}  pivot: {}".format(cam_xform, pivot))
-    print("  Anim   : frames {} – {} on rotate{}  (360°)".format(sf, ef, axis))
-    print("=" * 54)
-
-
-# ── UI ────────────────────────────────────────────────────────────────────────
+# UI 
 
 def show_turntable_ui():
     win_id = 'turntableWin'
-    if cmds.window(win_id, exists=True):
-        cmds.deleteUI(win_id)
+    if mc.window(win_id, exists=True):
+        mc.deleteUI(win_id)
 
-    cmds.window(
+    mc.window(
         win_id,
         title='Turntable',
         sizeable=True,
@@ -235,25 +194,25 @@ def show_turntable_ui():
         maximizeButton=False,
     )
 
-    cmds.columnLayout(adjustableColumn=True, rowSpacing=6, columnOffset=['both', 8])
-    cmds.separator(height=6, style='none')
+    mc.columnLayout(adjustableColumn=True, rowSpacing=6, columnOffset=['both', 8])
+    mc.separator(height=6, style='none')
 
-    # ── Section 1 : Light Settings ────────────────────────────────────────
-    cmds.frameLayout(
+    # Section 1 : Light Settings
+    mc.frameLayout(
         label=' Light Settings',
         collapsable=True,
         collapse=False,
         marginHeight=10,
         marginWidth=10
     )
-    cmds.columnLayout(adjustableColumn=True, rowSpacing=6)
+    mc.columnLayout(adjustableColumn=True, rowSpacing=6)
 
-    color_ctl = cmds.colorSliderGrp(
+    color_ctl = mc.colorSliderGrp(
         label='Color',
         rgb=(1.0, 1.0, 1.0),
         columnWidth=[(1, 120), (2, 30), (3, 80)],
     )
-    intensity_ctl = cmds.floatSliderGrp(
+    intensity_ctl = mc.floatSliderGrp(
         label='Intensity',
         value=1.0,
         minValue=0.0, maxValue=10.0,
@@ -261,7 +220,7 @@ def show_turntable_ui():
         field=True,
         columnWidth=[(1, 120), (2, 60), (3, 80)],
     )
-    exposure_ctl = cmds.floatSliderGrp(
+    exposure_ctl = mc.floatSliderGrp(
         label='Exposure',
         value=0.0,
         minValue=-10.0, maxValue=10.0,
@@ -269,12 +228,12 @@ def show_turntable_ui():
         field=True,
         columnWidth=[(1, 120), (2, 60), (3, 80)],
     )
-    use_temp_ctl = cmds.checkBoxGrp(
+    use_temp_ctl = mc.checkBoxGrp(
         label='Use Color Temperature',
         value1=False,
         columnWidth=[(1, 120)],
     )
-    temp_ctl = cmds.intSliderGrp(
+    temp_ctl = mc.intSliderGrp(
         label='Temperature (K)',
         value=6500,
         minValue=1000, maxValue=12000,
@@ -283,7 +242,7 @@ def show_turntable_ui():
         enable=False,
         columnWidth=[(1, 120), (2, 60), (3, 80)],
     )
-    spread_ctl = cmds.floatSliderGrp(
+    spread_ctl = mc.floatSliderGrp(
         label='Spread',
         value=1.0,
         minValue=0.0, maxValue=1.0,
@@ -292,44 +251,44 @@ def show_turntable_ui():
     )
 
     def on_temp_toggle(*_):
-        enabled = cmds.checkBoxGrp(use_temp_ctl, query=True, value1=True)
-        cmds.intSliderGrp(temp_ctl, edit=True, enable=enabled)
+        enabled = mc.checkBoxGrp(use_temp_ctl, query=True, value1=True)
+        mc.intSliderGrp(temp_ctl, edit=True, enable=enabled)
 
-    cmds.checkBoxGrp(use_temp_ctl, edit=True, changeCommand=on_temp_toggle)
+    mc.checkBoxGrp(use_temp_ctl, edit=True, changeCommand=on_temp_toggle)
 
-    cmds.setParent('..')  # end columnLayout
-    cmds.setParent('..')  # end frameLayout
+    mc.setParent('..')  # end columnLayout
+    mc.setParent('..')  # end frameLayout
 
-    cmds.separator(height=4, style='none')
+    mc.separator(height=4, style='none')
 
-    # ── Section 2 : Camera Settings ───────────────────────────────────────
-    cmds.frameLayout(
+    # Section 2 : Camera Settings
+    mc.frameLayout(
         label=' Camera Settings',
         collapsable=True,
         collapse=False,
         marginHeight=10,
         marginWidth=10
     )
-    cmds.columnLayout(adjustableColumn=True, rowSpacing=6)
+    mc.columnLayout(adjustableColumn=True, rowSpacing=6)
 
-    cam_name_ctl = cmds.textFieldGrp(
+    cam_name_ctl = mc.textFieldGrp(
         label='Camera Name',
         text='cam1',
         columnWidth=[(1, 120), (2, 140)],
     )
-    start_ctl = cmds.intFieldGrp(
+    start_ctl = mc.intFieldGrp(
         label='Start Frame',
         numberOfFields=1,
         value1=1,
         columnWidth=[(1, 120), (2, 80)],
     )
-    end_ctl = cmds.intFieldGrp(
+    end_ctl = mc.intFieldGrp(
         label='End Frame',
         numberOfFields=1,
         value1=120,
         columnWidth=[(1, 120), (2, 80)],
     )
-    axis_ctl = cmds.radioButtonGrp(
+    axis_ctl = mc.radioButtonGrp(
         label='Rotation Axis',
         labelArray3=['X', 'Y', 'Z'],
         numberOfRadioButtons=3,
@@ -337,15 +296,15 @@ def show_turntable_ui():
         columnWidth=[(1, 120), (2, 40), (3, 40), (4, 40)],
     )
 
-    cmds.setParent('..')
-    cmds.setParent('..')
+    mc.setParent('..')
+    mc.setParent('..')
 
-    cmds.separator(height=6, style='none')
+    mc.separator(height=6, style='none')
 
-    # ── Create button ─────────────────────────────────────────────────────
+    # Create setup and settings buttons
     def on_create(*_):
-        if not cmds.pluginInfo('mtoa', query=True, loaded=True):
-            cmds.confirmDialog(
+        if not mc.pluginInfo('mtoa', query=True, loaded=True):
+            mc.confirmDialog(
                 title='Arnold Not Loaded',
                 message=(
                     'MtoA (Arnold) plugin is not loaded.\n'
@@ -358,29 +317,29 @@ def show_turntable_ui():
         axis_map = {1: 'X', 2: 'Y', 3: 'Z'}
 
         settings = {
-            'color':          tuple(cmds.colorSliderGrp(color_ctl,     query=True, rgb=True)),
-            'intensity':      cmds.floatSliderGrp(intensity_ctl, query=True, value=True),
-            'exposure':       cmds.floatSliderGrp(exposure_ctl,  query=True, value=True),
-            'use_color_temp': cmds.checkBoxGrp(use_temp_ctl,     query=True, value1=True),
-            'temperature':    cmds.intSliderGrp(temp_ctl,        query=True, value=True),
-            'spread':         cmds.floatSliderGrp(spread_ctl,    query=True, value=True),
-            'cam_name':       cmds.textFieldGrp(cam_name_ctl,    query=True, text=True),
-            'start_frame':    cmds.intFieldGrp(start_ctl,        query=True, value1=True),
-            'end_frame':      cmds.intFieldGrp(end_ctl,          query=True, value1=True),
-            'rotation_axis':  axis_map[cmds.radioButtonGrp(axis_ctl, query=True, select=True)],
+            'color':          tuple(mc.colorSliderGrp(color_ctl,     query=True, rgb=True)),
+            'intensity':      mc.floatSliderGrp(intensity_ctl, query=True, value=True),
+            'exposure':       mc.floatSliderGrp(exposure_ctl,  query=True, value=True),
+            'use_color_temp': mc.checkBoxGrp(use_temp_ctl,     query=True, value1=True),
+            'temperature':    mc.intSliderGrp(temp_ctl,        query=True, value=True),
+            'spread':         mc.floatSliderGrp(spread_ctl,    query=True, value=True),
+            'cam_name':       mc.textFieldGrp(cam_name_ctl,    query=True, text=True),
+            'start_frame':    mc.intFieldGrp(start_ctl,        query=True, value1=True),
+            'end_frame':      mc.intFieldGrp(end_ctl,          query=True, value1=True),
+            'rotation_axis':  axis_map[mc.radioButtonGrp(axis_ctl, query=True, select=True)],
         }
 
         create_setup(settings)
 
-    cmds.button(
+    mc.button(
         label='Create Setup',
         height=36,
         command=on_create,
         backgroundColor=(0.2, 0.36, 0.2),
     )
-    cmds.separator(height=8, style='none')
+    mc.separator(height=8, style='none')
 
-    cmds.showWindow(win_id)
+    mc.showWindow(win_id)
 
 
 show_turntable_ui()
