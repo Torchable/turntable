@@ -120,8 +120,8 @@ def create_three_point_lighting_setup():
         `world_pos`, scales it to `light_size`, applies `intensity` and
         `rgb` colour, then aims it at the object centroid.
         """
-        shape = cmds.shadingNode('aiAreaLight', asLight=True, name=name + '_shape')
-        xform = cmds.listRelatives(shape, parent=True)[0]
+        xform = cmds.createNode('transform', name=name)
+        shape = cmds.createNode('aiAreaLight', parent=xform, name=name + '_shape')
         xform = cmds.rename(xform, name)
 
         cmds.xform(xform, worldSpace=True, translation=list(world_pos))
