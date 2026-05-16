@@ -1,5 +1,5 @@
 # Turntable
-# By Colin Cheng (With assistance from Claude Code for UI setup and formatting) 
+# By Colin Cheng (With assistance from Claude Code for UI setup and formatting errors) 
 # 
 # 
 # Run script, select object, adjust attributes in window
