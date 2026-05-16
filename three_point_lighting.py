@@ -39,10 +39,6 @@ def cleanup_previous_setup():
             if mc.objExists(n):
                 to_delete.append(n)
 
-    if to_delete:
-        cmds.delete(to_delete)
-        print("Turntable: removed previous setup ({}).".format(', '.join(to_delete)))
-
 
 # Core setup
 
@@ -96,11 +92,11 @@ def create_setup(settings):
         return (
             cx + radius * math.sin(az) * math.cos(el),
             cy + radius * math.sin(el),
-            cz + radius * math.cos(az) * math.cos(el),
+            cz + radius * math.cos(az) * math.cos(el)
         )
 
     def aim_at(xform, target):
-        """Point xform's local -Z axis at target (world space), no constraints left."""
+        #Point xform's local -Z axis at target (world space), no constraints left. This is what sets the positioning based on vertex.
         loc = mc.spaceLocator(name='_tempAimLoc')[0]
         mc.xform(loc, worldSpace=True, translation=list(target))
         con = mc.aimConstraint(
@@ -108,7 +104,7 @@ def create_setup(settings):
             aimVector=(0, 0, -1),
             upVector=(0, 1, 0),
             worldUpType='scene',
-            maintainOffset=False,
+            maintainOffset=False
         )[0]
         rot = mc.xform(xform, query=True, worldSpace=True, rotation=True)
         mc.delete(con, loc)
@@ -191,7 +187,7 @@ def show_turntable_ui():
         sizeable=True,
         resizeToFitChildren=True,
         minimizeButton=True,
-        maximizeButton=False,
+        maximizeButton=False
     )
 
     mc.columnLayout(adjustableColumn=True, rowSpacing=6, columnOffset=['both', 8])
@@ -210,7 +206,7 @@ def show_turntable_ui():
     color_ctl = mc.colorSliderGrp(
         label='Color',
         rgb=(1.0, 1.0, 1.0),
-        columnWidth=[(1, 120), (2, 30), (3, 80)],
+        columnWidth=[(1, 120), (2, 30), (3, 80)]
     )
     intensity_ctl = mc.floatSliderGrp(
         label='Intensity',
@@ -218,7 +214,7 @@ def show_turntable_ui():
         minValue=0.0, maxValue=10.0,
         fieldMinValue=0.0, fieldMaxValue=9999.0,
         field=True,
-        columnWidth=[(1, 120), (2, 60), (3, 80)],
+        columnWidth=[(1, 120), (2, 60), (3, 80)]
     )
     exposure_ctl = mc.floatSliderGrp(
         label='Exposure',
@@ -226,12 +222,12 @@ def show_turntable_ui():
         minValue=-10.0, maxValue=10.0,
         fieldMinValue=-100.0, fieldMaxValue=100.0,
         field=True,
-        columnWidth=[(1, 120), (2, 60), (3, 80)],
+        columnWidth=[(1, 120), (2, 60), (3, 80)]
     )
     use_temp_ctl = mc.checkBoxGrp(
         label='Use Color Temperature',
         value1=False,
-        columnWidth=[(1, 120)],
+        columnWidth=[(1, 120)]
     )
     temp_ctl = mc.intSliderGrp(
         label='Temperature (K)',
@@ -240,14 +236,14 @@ def show_turntable_ui():
         fieldMinValue=800, fieldMaxValue=20000,
         field=True,
         enable=False,
-        columnWidth=[(1, 120), (2, 60), (3, 80)],
+        columnWidth=[(1, 120), (2, 60), (3, 80)]
     )
     spread_ctl = mc.floatSliderGrp(
         label='Spread',
         value=1.0,
         minValue=0.0, maxValue=1.0,
         field=True,
-        columnWidth=[(1, 120), (2, 60), (3, 80)],
+        columnWidth=[(1, 120), (2, 60), (3, 80)]
     )
 
     def on_temp_toggle(*_):
@@ -261,7 +257,7 @@ def show_turntable_ui():
 
     mc.separator(height=4, style='none')
 
-    # Section 2 : Camera Settings
+    # Section 2: Camera Settings
     mc.frameLayout(
         label=' Camera Settings',
         collapsable=True,
@@ -274,26 +270,26 @@ def show_turntable_ui():
     cam_name_ctl = mc.textFieldGrp(
         label='Camera Name',
         text='cam1',
-        columnWidth=[(1, 120), (2, 140)],
+        columnWidth=[(1, 120), (2, 140)]
     )
     start_ctl = mc.intFieldGrp(
         label='Start Frame',
         numberOfFields=1,
         value1=1,
-        columnWidth=[(1, 120), (2, 80)],
+        columnWidth=[(1, 120), (2, 80)]
     )
     end_ctl = mc.intFieldGrp(
         label='End Frame',
         numberOfFields=1,
         value1=120,
-        columnWidth=[(1, 120), (2, 80)],
+        columnWidth=[(1, 120), (2, 80)]
     )
     axis_ctl = mc.radioButtonGrp(
         label='Rotation Axis',
         labelArray3=['X', 'Y', 'Z'],
         numberOfRadioButtons=3,
-        select=2,                          # Y by default
-        columnWidth=[(1, 120), (2, 40), (3, 40), (4, 40)],
+        select=2,                          # Y by default, world space
+        columnWidth=[(1, 120), (2, 40), (3, 40), (4, 40)]
     )
 
     mc.setParent('..')
@@ -310,7 +306,7 @@ def show_turntable_ui():
                     'MtoA (Arnold) plugin is not loaded.\n'
                     'Load it via Windows > Settings/Preferences > Plug-in Manager.'
                 ),
-                button=['OK'],
+                button=['OK']
             )
             return
 
@@ -326,7 +322,7 @@ def show_turntable_ui():
             'cam_name':       mc.textFieldGrp(cam_name_ctl,    query=True, text=True),
             'start_frame':    mc.intFieldGrp(start_ctl,        query=True, value1=True),
             'end_frame':      mc.intFieldGrp(end_ctl,          query=True, value1=True),
-            'rotation_axis':  axis_map[mc.radioButtonGrp(axis_ctl, query=True, select=True)],
+            'rotation_axis':  axis_map[mc.radioButtonGrp(axis_ctl, query=True, select=True)]
         }
 
         create_setup(settings)
@@ -335,7 +331,7 @@ def show_turntable_ui():
         label='Create Setup',
         height=36,
         command=on_create,
-        backgroundColor=(0.2, 0.36, 0.2),
+        backgroundColor=(0.2, 0.36, 0.2)
     )
     mc.separator(height=8, style='none')
 
