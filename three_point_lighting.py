@@ -1,5 +1,5 @@
 # Turntable
-# By Colin Cheng (With assistance from Claude Code for UI setup and formatting errors) 
+# By Colin Cheng (With assistance from Claude Code for UI setup and determining the aiming parameters) 
 # 
 # 
 # Run script, select object, adjust attributes in window
@@ -23,7 +23,7 @@ class variables():
     light_placement = {
         'keyLight':  ( 45,  45, 1.0),
         'fillLight': (-45,  20, 1.3),
-        'rimLight':  (180,  55, 1.0),
+        'rimLight':  (180,  55, 1.0)
     }
 
 
