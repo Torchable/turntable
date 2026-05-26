@@ -1,4 +1,4 @@
-# Turntable
+# Turntable (Oh how the turns have tabled!) 
 # By Colin Cheng (With assistance from Claude Code for UI setup and determining the aiming parameters) 
 # 
 # 
